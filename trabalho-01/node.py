@@ -4,6 +4,9 @@ import struct
 import socket
 import sys
 import random
+import json
+import os
+from operator import itemgetter
 
 PORT = 9001
 GROUP = '225.0.0.250'
@@ -12,15 +15,17 @@ NPROCESS = 3
 MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
         'Arthur', 'Bernardo', 'Davi', 'Gabriel', 'Heitor', 'Lucca', 'Lorenzo', 'Miguel', 'Matheus', 'Pedro']
 
+# Lamport's clock
+clock = int(sys.argv[1])
+
 
 def add_socket_to_group():
-    # Cria um socket UDP
+    # Create UDP socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    # Permite que mais de um socket utilize o mesmo endereço na mesma máquina
+    # Allow the address to be used by more than one socket
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # Conecta por localhost e porta fornecida
     s.bind(('', PORT))
 
     group = socket.inet_aton(GROUP)
@@ -30,49 +35,76 @@ def add_socket_to_group():
     return s
 
 
-def receiver(id, clock, lista):
 
+def proccess_message(message, message_queue, my_id):
+    global clock
+
+    message_queue.append(message)
+
+    # Sort the queue by timestamp then by proccess ID
+    message_queue.sort(key=itemgetter('timestamp', 'id'))
+
+    print('-------- Message queue ------')
+    [print(x) for x in message_queue]
+
+    # Update Lamport's clock only if the incoming message isn't mine
+    if message['id'] != my_id:
+        msg_timestamp = message['timestamp']
+        if msg_timestamp > clock:
+            clock = msg_timestamp + 1
+        else:
+            clock += 1
+
+
+def receiver(message_queue, my_id):
     s = add_socket_to_group()
 
-    # Loop, printing any data we receive
+    # Print all data received in multicast group
     while True:
         data, source = s.recvfrom(1500)
-        while data[-1:] == '\0':
-            data = data[:-1]  # Strip trailing \0's
-        msg = data.decode('utf-8')
+        data = data.decode('utf-8')
+        message = json.loads(data)
 
-        print(id, clock, msg)
+        # print(id, timestamp, content)
+        print("")
+        t = threading.Thread(target=proccess_message, args=(message, message_queue, my_id))
+        t.start()
 
 
-def sender(message):
-    # Cria socket UDP
+def sender(message, message_queue):
+    # Create UDP socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    # Enviar a mensagem
-    data = message.encode('utf-8') + b'\0'
-    s.sendto(data, (GROUP, PORT))
+    # Send message
+    data = json.dumps(message)
+    s.sendto(data.encode('utf-8'), (GROUP, PORT))
     time.sleep(0.5)
+
+    # Update clock
+    global clock
+    clock += 1
 
 
 if __name__ == "__main__":
-    lista = []
-    id = sys.argv[1]
-    clock = sys.argv[2]
+    message_queue = []
+    id = os.getpid()
+
+    print(f"Starting proccess: {id}")
 
     # Cria thead responśvel por receber as mensagens
-    t = threading.Thread(target=receiver, args=(id, clock, lista))
+    t = threading.Thread(target=receiver, args=(message_queue, id))
     t.start()
 
     # Thread principal é responsável por enviar os pacotes e "entregá-los" à aplicação
     while(True):
-        time.sleep(1)
         input()
         msg = random.choice(MSGS)
         print("")
         message = {
-            'id': sys.argv[1],
-            'timestamp': sys.argv[2],
+            'id': id,
+            'timestamp': clock,
             'content': msg
         }
-        sender(message)
+        sender(message, message_queue)
         print("")
+        time.sleep(1)
