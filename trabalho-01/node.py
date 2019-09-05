@@ -8,8 +8,8 @@ import json
 import os
 from operator import itemgetter
 
-PORT = 9001
-GROUP = '225.0.0.250'
+PORT = 5007
+GROUP = '224.1.1.1'
 NPROCESS = 3
 
 MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
