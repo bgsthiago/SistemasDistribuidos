@@ -38,15 +38,6 @@ def add_socket_to_group():
 
 def proccess_message(message, message_queue, my_id):
     global clock
-
-    message_queue.append(message)
-
-    # Sort the queue by timestamp then by proccess ID
-    message_queue.sort(key=itemgetter('timestamp', 'id'))
-
-    print('-------- Message queue ------')
-    [print(x) for x in message_queue]
-
     # Update Lamport's clock only if the incoming message isn't mine
     if message['id'] != my_id:
         msg_timestamp = message['timestamp']
@@ -54,6 +45,50 @@ def proccess_message(message, message_queue, my_id):
             clock = msg_timestamp + 1
         else:
             clock += 1
+
+    # ACK format: 'ACK msg_id msg_timestamp'
+    if message['is_ack'] == True:
+        msg = message['content'].split(' ')
+        msg_id = int(msg[1])
+        msg_timestamp = int(msg[2])
+
+        print(f'\n Received ACK {msg_id} {msg_timestamp}\n')
+
+        for i in message_queue:
+            # print('id e timestamp da msg: ', msg_id, i['id'], msg_timestamp, i['timestamp'])
+            if i['id'] == msg_id and i['timestamp'] == msg_timestamp:
+                i['n_ack'] += 1
+                # print(i['n_ack'])
+
+                # If all ACK's were received, message is ready to be delievered
+                if i['n_ack'] == NPROCESS:
+                    print('-------- Message queue ------')
+                    [print(item) for item in message_queue]
+                break
+
+    else:
+        # Add message to the queue with 0 ACK received
+        print(f'Received message: {message}')
+
+        message['n_ack'] = 0
+        message_queue.append(message)
+        
+        # Send ACK
+        msg_id = message['id']
+        msg_timestamp = message['timestamp']
+
+        ack_message = {
+            'id': my_id,
+            'timestamp': clock,
+            'content': f'ACK {msg_id} {msg_timestamp}',
+            'is_ack': True
+        }
+
+        print(f'Sending ACK {msg_id} {msg_timestamp}')
+        sender(ack_message)
+
+        # Sort the queue by timestamp then by proccess ID
+        message_queue.sort(key=itemgetter('timestamp', 'id'))
 
 
 def receiver(message_queue, my_id):
@@ -71,14 +106,19 @@ def receiver(message_queue, my_id):
         t.start()
 
 
-def sender(message, message_queue):
+def sender(message):
     # Create UDP socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+    # Time-to-live (optional). Não permitir que o pacote alcance se espalhe para a rede externa
+    ttl_bin = struct.pack('@i', 1)
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
+
     # Send message
     data = json.dumps(message)
+    print(f'Sending {message}...\n\n')
     s.sendto(data.encode('utf-8'), (GROUP, PORT))
-    time.sleep(0.5)
+    # time.sleep(0.5)
 
     # Update clock
     global clock
@@ -103,8 +143,9 @@ if __name__ == "__main__":
         message = {
             'id': id,
             'timestamp': clock,
-            'content': msg
+            'content': msg,
+            'is_ack': False
         }
-        sender(message, message_queue)
+        sender(message)
         print("")
-        time.sleep(1)
+        # time.sleep(1)
