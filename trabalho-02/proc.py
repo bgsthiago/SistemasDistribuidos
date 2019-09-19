@@ -38,7 +38,7 @@ def add_socket_to_group():
     # Allow the address to be used by more than one socket
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    s.bind(('', PORT))
+    s.bind(('', PORT2))
 
     group = socket.inet_aton(GROUP)
     mreq = struct.pack('4sL', group, socket.INADDR_ANY)
@@ -96,7 +96,7 @@ def hand_message(msg, resource_list, my_id):
         #  - If it was me, send a "permission denied" reply
         #  - If it wasn't me, send an "OK" reply
         elif resource.state == 'requested':
-            if resource.req_timestamp > msg['timestamp']:
+            if resource.req_timestamp < msg['timestamp']:
                 reply = make_reply('PERMISSION DENIED', my_id, resource_name, clock)
             elif resource.req_timestamp == msg['timestamp']:
                 if my_id > msg['id']:
@@ -110,12 +110,14 @@ def hand_message(msg, resource_list, my_id):
             reply = make_reply('OK', my_id, resource_name, clock)
 
         # If I've send a "permission denied" reply, put the sender process in next_queue
-        resource.next_queue.append(msg['addr'])
+        if reply['content']['type'] == 'PERMISSION DENIED':
+            resource.next_queue.append(msg['addr'])
+            
     elif msg['content']['type'] == 'OK':
         resource.n_ok += 1
 
         # If I've got everyone's "OK", access resource
-        if resource.n_ok == NPROCESS:
+        if resource.n_ok == NPROCESS-1:
             access_resource(resource)
     
     send_reply(reply, msg['addr'])
@@ -151,7 +153,6 @@ def proccess_message(message, message_queue, resource_list, my_id):
 
                     # Send message to application
                     if i['id'] != my_id:
-                        print('ENTREI AQUI')
                         hand_message(i, resource_list, my_id)
 
                 break
@@ -182,7 +183,7 @@ def proccess_message(message, message_queue, resource_list, my_id):
 
 
 def receiver(message_queue, resource_list, my_id):
-    s = add_socket_to_group()
+    global s
 
     # Print all data received in multicast group
     while True:
