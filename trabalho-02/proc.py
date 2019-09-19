@@ -67,9 +67,9 @@ def make_reply(msg_type, my_id, resource_name, timestamp):
 def access_resource(resource, my_id):
     global clock
 
-    print(f'Acessando recurso {resource}...')
+    print(f'\nAcessando recurso {resource}...\n')
     time.sleep(5)
-    print(f'Liberando recurso {resource}...')
+    print(f'\nLiberando recurso {resource}...\n')
 
     # Send OK messages every processes in next_queue
     for reply_port in resource.next_queue:
@@ -114,6 +114,8 @@ def hand_message(msg, resource_list, my_id):
         else:
             reply = make_reply('OK', my_id, resource_name, clock)
             # print('\n', reply, '\n')
+        
+        send_reply(reply, msg['reply_port'])
 
         # If I've send a "permission denied" reply, put the sender process in next_queue
         if reply['content']['msg_type'] == 'PERMISSION DENIED':
@@ -126,7 +128,6 @@ def hand_message(msg, resource_list, my_id):
         if resource.n_ok == NPROCESS-1:
             access_resource(resource, my_id)
     
-    send_reply(reply, msg['reply_port'])
 
 
 def proccess_message(message, resource_list, my_id):
@@ -203,7 +204,10 @@ def send_reply(message, port):
     # Send reply message
     data = json.dumps(message)
     print(f'Sending reply {message}...\n\n')
-    s.sendto(data.encode('utf-8'), ('', port))
+    try:
+        s.sendto(data.encode('utf-8'), ('', port))
+    except OSError:
+        pass
     # print(f'SENDING {data} to {port}')
 
     # Update clock
@@ -225,7 +229,7 @@ def sender(message, port):
     message['reply_port'] = PORT_LIST[port_idx]
     data = json.dumps(message)
     print(f'Sending {message}...\n\n')
-    s.sendto(data.encode('utf-8'), ('', port))
+    s.sendto(data.encode('utf-8'), ('127.0.0.1', port))
     # time.sleep(0.5)
 
     # Update clock
