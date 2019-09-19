@@ -18,9 +18,9 @@ import os
 from operator import itemgetter
 from resource import Resource
 
-PORT = 5007
 GROUP = '224.1.1.1'
 NPROCESS = 3
+PORT_LIST = [30000, 30001, 30002]
 
 # MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
 #         'Arthur', 'Bernardo', 'Davi', 'Gabriel', 'Heitor', 'Lucca', 'Lorenzo', 'Miguel', 'Matheus', 'Pedro']
@@ -29,6 +29,9 @@ RESOURCES = ['A', 'B', 'C']
 
 # Lamport's clock
 clock = int(sys.argv[1])
+
+# Process port
+port_idx = int(sys.argv[2])
 
 
 def add_socket_to_group():
@@ -47,29 +50,31 @@ def add_socket_to_group():
     return s
 
 
-def make_reply(type, my_id, resource_name, timestamp):
-    return {
+def make_reply(msg_type, my_id, resource_name, timestamp):
+    msg = {
         'id': my_id,
         'timestamp': clock,
-        'is_ack': False,
         'content': {
             'resource_name': resource_name,
-            'type': type
-        }
+            'msg_type': msg_type
+        },
+        'reply_port': 0
     }
 
+    return msg
 
-def access_resource(resource):
+
+def access_resource(resource, my_id):
     global clock
 
     print(f'Acessando recurso {resource}...')
-    time.sleep(1)
+    time.sleep(5)
     print(f'Liberando recurso {resource}...')
 
     # Send OK messages every processes in next_queue
-    for addr in resource.next_queue:
+    for reply_port in resource.next_queue:
         reply = make_reply('OK', my_id, resource_name, clock)
-        send_reply(reply, addr)
+        send_reply(reply, reply_port)
 
     # Reset state, next_queue and number of "OK" received
     resource.state = 'unrequested'
@@ -80,14 +85,14 @@ def access_resource(resource):
 # message content: {resource_name, type}
 def hand_message(msg, resource_list, my_id):
     global clock
-    reply = None
+    reply = {}
     
     # Get resource in resource list
     resource_name = msg['content']['resource_name']
     idx = resource_list.index(Resource(resource_name))
     resource = resource_list[idx]
 
-    if msg['content']['type'] == 'REQUEST':
+    if msg['content']['msg_type'] == 'REQUEST':
         # If i'm accessing the resource, send a "permission denied" reply
         if resource.state == 'using':
             reply = make_reply('PERMISSION DENIED', my_id, resource_name, clock)
@@ -108,24 +113,29 @@ def hand_message(msg, resource_list, my_id):
         # If I don't want to access the resource, send an "OK" reply
         else:
             reply = make_reply('OK', my_id, resource_name, clock)
+            # print('\n', reply, '\n')
 
         # If I've send a "permission denied" reply, put the sender process in next_queue
-        if reply['content']['type'] == 'PERMISSION DENIED':
-            resource.next_queue.append(msg['addr'])
+        if reply['content']['msg_type'] == 'PERMISSION DENIED':
+            resource.next_queue.append(msg['reply_port'])
             
-    elif msg['content']['type'] == 'OK':
+    elif msg['content']['msg_type'] == 'OK':
         resource.n_ok += 1
 
         # If I've got everyone's "OK", access resource
         if resource.n_ok == NPROCESS-1:
-            access_resource(resource)
+            access_resource(resource, my_id)
     
-    send_reply(reply, msg['addr'])
+    send_reply(reply, msg['reply_port'])
 
 
-def proccess_message(message, message_queue, resource_list, my_id):
+def proccess_message(message, resource_list, my_id):
     global clock
     # Update Lamport's clock only if the incoming message isn't mine
+
+    # ** Descomentar para testar desempate por timestamp
+    time.sleep(2)
+    
     if message['id'] != my_id:
         msg_timestamp = message['timestamp']
         if msg_timestamp > clock:
@@ -134,105 +144,97 @@ def proccess_message(message, message_queue, resource_list, my_id):
             clock += 1
 
     # ACK format: 'ACK msg_id msg_timestamp'
-    if message['is_ack'] == True:
-        msg = message['content'].split(' ')
-        msg_id = int(msg[1])
-        msg_timestamp = int(msg[2])
+    # if message['is_ack'] == True:
+    #     msg = message['content'].split(' ')
+    #     msg_id = int(msg[1])
+    #     msg_timestamp = int(msg[2])
 
-        # Find message that this ACK belongs to
-        for i in message_queue:
-            # print('id e timestamp da msg: ', msg_id, i['id'], msg_timestamp, i['timestamp'])
-            if i['id'] == msg_id and i['timestamp'] == msg_timestamp:
-                i['n_ack'] += 1
-                # print(i['n_ack'])
+    #     # # Find message that this ACK belongs to
+    #     # for i in message_queue:
+    #     #     # print('id e timestamp da msg: ', msg_id, i['id'], msg_timestamp, i['timestamp'])
+    #     #     if i['id'] == msg_id and i['timestamp'] == msg_timestamp:
+    #     #         i['n_ack'] += 1
+    #     #         # print(i['n_ack'])
 
-                # If all ACK's were received, message is ready to be delievered
-                if i['n_ack'] == NPROCESS:
-                    print('-------- Message queue ------')
-                    [print(item) for item in message_queue]
+    #     #         # If all ACK's were received, message is ready to be delievered
+    #     #         if i['n_ack'] == NPROCESS:
+    #     #             print('-------- Message queue ------')
+    #     #             [print(item) for item in message_queue]
 
-                    # Send message to application
-                    if i['id'] != my_id:
-                        hand_message(i, resource_list, my_id)
+    #     #             # Send message to application
+    #     #             if i['id'] != my_id:
+    #     #                 hand_message(i, resource_list, my_id)
 
-                break
+    #     #         break
+    # else:
 
-    else:
-        # Add message to the queue with 0 ACK received
-        print(f'Received message: {message}')
+    hand_message(message, resource_list, my_id)
 
-        message['n_ack'] = 0
-        message_queue.append(message)
-        
-        # Send ACK
-        msg_id = message['id']
-        msg_timestamp = message['timestamp']
+    # Add message to the queue with 0 ACK received
+    print(f'Received message: {message}')
 
-        ack_message = {
-            'id': my_id,
-            'timestamp': clock,
-            'content': f'ACK {msg_id} {msg_timestamp}',
-            'is_ack': True
-        }
+    # message_queue.append(message)
+    
 
-        print(f'Sending ACK {msg_id} {msg_timestamp}')
-        sender(ack_message)
-
-        # Sort the queue by timestamp then by proccess ID
-        message_queue.sort(key=itemgetter('timestamp', 'id'))
+    # Sort the queue by timestamp then by proccess ID
+    # message_queue.sort(key=itemgetter('timestamp', 'id'))
 
 
-def receiver(message_queue, resource_list, my_id):
-    global s
+def receiver(resource_list, my_id, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # print('DO RECEIVER')
+    s.bind(('', port))
 
-    # Print all data received in multicast group
     while True:
         data, source = s.recvfrom(1500)
         data = data.decode('utf-8')
         message = json.loads(data)
-        message['addr'] = source
 
         # print(id, timestamp, content)
-        print("")
-        t = threading.Thread(target=proccess_message, args=(message, message_queue, resource_list, my_id))
+        # print('TO DENTRO DO RECEIVER INFERNO', message)
+        t = threading.Thread(target=proccess_message, args=(message, resource_list, my_id))
         t.start()
 
 
-def send_reply(message, addr):
-    # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    global s
+def send_reply(message, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # print('DO SEND_REPLY')
     
     # Send reply message
     data = json.dumps(message)
-    s.sendto(data.encode('utf-8'), addr)
+    print(f'Sending reply {message}...\n\n')
+    s.sendto(data.encode('utf-8'), ('', port))
+    # print(f'SENDING {data} to {port}')
 
     # Update clock
     global clock
     clock += 1
 
 
-def sender(message):
+def sender(message, port):
     # Create UDP socket
-    # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    global s
+    global port_idx
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # print('DO SENDER')
 
     # Time-to-live (optional). Não permitir que o pacote alcance se espalhe para a rede externa
-    ttl_bin = struct.pack('@i', 1)
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
+    # ttl_bin = struct.pack('@i', 1)
+    # s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
 
     # Send message
+    message['reply_port'] = PORT_LIST[port_idx]
     data = json.dumps(message)
     print(f'Sending {message}...\n\n')
-    s.sendto(data.encode('utf-8'), (GROUP, PORT))
+    s.sendto(data.encode('utf-8'), ('', port))
     # time.sleep(0.5)
 
     # Update clock
     global clock
     clock += 1
 
+
 if __name__ == "__main__":
-    s = add_socket_to_group()
-    message_queue = []
+    # message_queue = []
     resource_list = [Resource(i) for i in RESOURCES]
 
     id = os.getpid()
@@ -240,12 +242,12 @@ if __name__ == "__main__":
     print(f"Starting proccess: {id}")
 
     # Cria thead responśvel por receber as mensagens
-    t = threading.Thread(target=receiver, args=(message_queue, resource_list, id))
+    t = threading.Thread(target=receiver, args=(resource_list, id, PORT_LIST[port_idx]))
     t.start()
 
     # Main thread
     while(True):
-        resource_name = input('Insira o nome do recurso que deseja utilizar (A, B, C): ')
+        resource_name = input()
 
         # Change the desired resource's state to requested and set request timestamp
         idx = resource_list.index(Resource(resource_name))
@@ -256,7 +258,7 @@ if __name__ == "__main__":
         # Create request message
         msg = {
             'resource_name': resource_name,
-            'type': 'REQUEST'
+            'msg_type': 'REQUEST'
         }
 
         print("")
@@ -267,9 +269,16 @@ if __name__ == "__main__":
             'id': id,
             'timestamp': clock,
             'content': msg,
-            'is_ack': False
+            'reply_port': 0
         }
-        sender(message)
+
+        my_port = PORT_LIST[port_idx]
+        
+        for i in PORT_LIST:
+            # print(i)
+            if my_port != i:
+                sender(message, i)
+            
         print("")
         
         # time.sleep(1)
