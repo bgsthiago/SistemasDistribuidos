@@ -38,7 +38,7 @@ def add_socket_to_group():
 
 def proccess_message(message, message_queue, my_id):
     global clock
-    # Update Lamport's clock only if the incoming message isn't mine
+    # Update Lamport's clock only if incoming message isn't my own
     if message['id'] != my_id:
         msg_timestamp = message['timestamp']
         if msg_timestamp > clock:
@@ -52,7 +52,7 @@ def proccess_message(message, message_queue, my_id):
         msg_id = int(msg[1])
         msg_timestamp = int(msg[2])
 
-        print(f'\n Received ACK {msg_id} {msg_timestamp}\n')
+        print(f'Received ACK {msg_id} {msg_timestamp}')
 
         for i in message_queue:
             # print('id e timestamp da msg: ', msg_id, i['id'], msg_timestamp, i['timestamp'])
@@ -67,13 +67,14 @@ def proccess_message(message, message_queue, my_id):
                 break
 
     else:
-        # Add message to the queue with 0 ACK received
         print(f'Received message: {message}')
 
+        # Add message to the queue with 0 ACK received
         message['n_ack'] = 0
         message_queue.append(message)
         
         # Send ACK
+        # ACK format: 'ACK msg_id msg_timestamp'
         msg_id = message['id']
         msg_timestamp = message['timestamp']
 
@@ -110,7 +111,7 @@ def sender(message):
     # Create UDP socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    # Time-to-live (optional). Não permitir que o pacote alcance se espalhe para a rede externa
+    # Time-to-live.
     ttl_bin = struct.pack('@i', 1)
     s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
 
@@ -131,11 +132,11 @@ if __name__ == "__main__":
 
     print(f"Starting proccess: {id}")
 
-    # Cria thead responśvel por receber as mensagens
+    # Create thread that will receive messages
     t = threading.Thread(target=receiver, args=(message_queue, id))
     t.start()
 
-    # Thread principal é responsável por enviar os pacotes e "entregá-los" à aplicação
+    # Main thread
     while(True):
         input()
         msg = random.choice(MSGS)
