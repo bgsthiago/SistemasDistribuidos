@@ -111,15 +111,14 @@ def hand_message(msg, resource_list, my_id):
 
         # If I've send a "permission denied" reply, put the sender process in next_queue
         resource.next_queue.append(msg['addr'])
-
-        send_reply(reply, msg['addr'])
-
     elif msg['content']['type'] == 'OK':
         resource.n_ok += 1
 
         # If I've got everyone's "OK", access resource
         if resource.n_ok == NPROCESS:
             access_resource(resource)
+    
+    send_reply(reply, msg['addr'])
 
 
 def proccess_message(message, message_queue, resource_list, my_id):
@@ -152,6 +151,7 @@ def proccess_message(message, message_queue, resource_list, my_id):
 
                     # Send message to application
                     if i['id'] != my_id:
+                        print('ENTREI AQUI')
                         hand_message(i, resource_list, my_id)
 
                 break
@@ -198,7 +198,8 @@ def receiver(message_queue, resource_list, my_id):
 
 
 def send_reply(message, addr):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    global s
     
     # Send reply message
     data = json.dumps(message)
@@ -211,7 +212,8 @@ def send_reply(message, addr):
 
 def sender(message):
     # Create UDP socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    global s
 
     # Time-to-live (optional). Não permitir que o pacote alcance se espalhe para a rede externa
     ttl_bin = struct.pack('@i', 1)
@@ -228,6 +230,7 @@ def sender(message):
     clock += 1
 
 if __name__ == "__main__":
+    s = add_socket_to_group()
     message_queue = []
     resource_list = [Resource(i) for i in RESOURCES]
 
@@ -244,10 +247,7 @@ if __name__ == "__main__":
         resource_name = input('Insira o nome do recurso que deseja utilizar (A, B, C): ')
 
         # Change the desired resource's state to requested and set request timestamp
-        try:
-            idx = resource_list.index(Resource(resource_name))
-        except ValueError:
-            print(f'DEU RUIM COM {resource_name}')
+        idx = resource_list.index(Resource(resource_name))
         resource = resource_list[idx]
         resource.state = 'requested'
         resource.req_timestamp = clock
