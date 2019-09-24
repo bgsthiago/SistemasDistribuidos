@@ -1,12 +1,8 @@
 from subprocess import call
 from random import randint
-
-r = randint(30000, 30004)
+import time
 
 for i in range(30000, 30004):
-    if i == r:
-        call(['gnome-terminal', '-e', 'bash', '--command',
-              'python proc.py {} 1'.format(str(i))])
-    else:
-        call(['gnome-terminal', '-e', 'bash', '--command',
-              'python proc.py {} 0'.format(str(i))])
+    call(['gnome-terminal', '-e', 'bash', '--command',
+          'python proc.py {} {}'.format(str(i), str(i-30000))])
+    time.sleep(1)
