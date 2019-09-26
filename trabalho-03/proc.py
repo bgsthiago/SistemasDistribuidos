@@ -28,8 +28,9 @@ clock = 1
 my_port = int(sys.argv[1])
 my_id = int(sys.argv[2])
 election_responses = []
-current_leader = -1
+current_leader = 0
 last_message_ACK = False
+started_election = False
 
 
 def make_reply(msg_type, content):
@@ -43,29 +44,14 @@ def make_reply(msg_type, content):
     return msg
 
 
-def access_resource(resource, my_id):
-    global clock
-
-    print(f'\nAcessando recurso {resource}...\n')
-    resource.state = 'using'
-    time.sleep(5)
-    print(f'\nLiberando recurso {resource}...\n')
-
-    # Send OK messages every processes in next_queue
-    for reply_port in resource.next_queue:
-        reply = make_reply('OK', my_id, resource_name, clock)
-        send_reply(reply, reply_port)
-
-    # Reset state, next_queue and number of "OK" received
-    resource.state = 'unrequested'
-    resource.next_queue.clear()
-    resource.n_ok = 0
-
-
 def handle_message(msg, my_id):
     global clock
+    global last_message_ACK
+    global current_leader
+    global started_election
 
     msg_type = msg['type']
+    print(f'------- TIPO DA MENSAGEM :{msg_type}')
 
     if msg_type == 'ACK':
         last_message_ACK = True
@@ -77,14 +63,20 @@ def handle_message(msg, my_id):
         
         election_thread = threading.Thread(target=election)
         election_thread.start()
+    elif msg_type == 'LEADER_ANNOUNCEMENT':
+        started_election = False
+        current_leader = msg['id']
+        print(f'---- The new leader is {current_leader} -----\n')
     else:
-        reply = make_reply('ACK', f'ACK {my_id}')
+        msg_id = msg['id']
+        msg_timestamp = msg['timestamp']
+
+        reply = make_reply('ACK', f'ACK {msg_id} {msg_timestamp}')
         send_reply(reply, msg['reply_port'])
 
 
 def proccess_message(message, my_id):
     global clock
-    print('CHEGOU UM BAGUI')
 
     # ** Descomentar para testar
     #time.sleep(2)
@@ -97,7 +89,7 @@ def proccess_message(message, my_id):
         else:
             clock += 1
 
-    handle_message(message, resource_list, my_id)
+    handle_message(message, my_id)
 
     # Add message to the queue with 0 ACK received
     print(f'\nReceived message: {message}')
@@ -122,7 +114,7 @@ def send_reply(message, port):
 
     # Send reply message
     data = json.dumps(message)
-    print(f'Sending reply {message}...\n\n')
+    print(f'Sending reply {message} to {port}...\n\n')
     try:
         s.sendto(data.encode('utf-8'), ('', port))
     except OSError:
@@ -134,13 +126,14 @@ def send_reply(message, port):
 
 
 def sender(message, port):
+    time.sleep(1)
     # Create UDP socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Send message
     message['reply_port'] = my_port
     data = json.dumps(message)
-    print(f'Sending {message}...\n\n')
+    print(f'Sending {message} to {port}...\n\n')
     s.sendto(data.encode('utf-8'), ('127.0.0.1', port))
 
     # Update clock
@@ -149,6 +142,14 @@ def sender(message, port):
 
 
 def election():
+    global current_leader
+    global started_election
+
+    if started_election == True:
+        return
+    else:
+        started_election = True
+
     message = {
         'id': my_id,
         'timestamp': clock,
@@ -159,7 +160,7 @@ def election():
     # Send election message to all process with higher ID 
     if my_id < NPROCESS-1:
         for i in range(my_id + 1, NPROCESS):
-            sender(message, i)
+            sender(message, PORT_LIST[i])
 
         time.sleep(TIME_LIMIT)
 
@@ -175,16 +176,16 @@ def election():
         }
 
         current_leader = my_id
+        print(f'---- The new leader is {current_leader} -----\n')
 
         for i in range(NPROCESS):
             if i != my_id:
-                sender(announcement_msg, i)
+                sender(announcement_msg, PORT_LIST[i])
 
     election_responses.clear()
 
 
 if __name__ == "__main__":
-
     print(f"Starting proccess: {my_id}")
 
     # Cria thead responśvel por receber as mensagens
@@ -206,7 +207,7 @@ if __name__ == "__main__":
 
         # Send message and wait for ACK
         last_message_ACK = False
-        sender(message, dest)
+        sender(message, PORT_LIST[dest])
         time.sleep(TIME_LIMIT)
 
         # If leader doesn't respond ACK,
