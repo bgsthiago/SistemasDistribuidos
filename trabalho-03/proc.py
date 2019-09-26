@@ -18,20 +18,26 @@ import os
 
 NPROCESS = 5
 PORT_LIST = [30000, 30001, 30002, 30003, 30004]
+TIME_LIMIT = 3 # in seconds
+MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
+        'Arthur', 'Bernardo', 'Davi', 'Gabriel', 'Heitor', 'Lucca', 'Lorenzo', 'Miguel', 'Matheus', 'Pedro']
 
-# Process port
-port_idx = int(sys.argv[1])
+# Lamport's clock
+clock = 1
+
+my_port = int(sys.argv[1])
+my_id = int(sys.argv[2])
+election_responses = []
+current_leader = -1
+last_message_ACK = False
 
 
-def make_reply(msg_type, my_id, resource_name, timestamp):
+def make_reply(msg_type, content):
     msg = {
         'id': my_id,
         'timestamp': clock,
-        'content': {
-            'resource_name': resource_name,
-            'msg_type': msg_type
-        },
-        'reply_port': 0
+        'content': content,
+        'type': msg_type
     }
 
     return msg
@@ -56,61 +62,32 @@ def access_resource(resource, my_id):
     resource.n_ok = 0
 
 
-# message content: {resource_name, type}
-def hand_message(msg, resource_list, my_id):
+def handle_message(msg, my_id):
     global clock
-    reply = {}
 
-    # Get resource in resource list
-    resource_name = msg['content']['resource_name']
-    idx = resource_list.index(Resource(resource_name))
-    resource = resource_list[idx]
+    msg_type = msg['type']
 
-    if msg['content']['msg_type'] == 'REQUEST':
-        # If i'm accessing the resource, send a "permission denied" reply
-        if resource.state == 'using':
-            reply = make_reply('PERMISSION DENIED', my_id,
-                               resource_name, clock)
-
-        # If i want to access the resource, check who requested it first:
-        #  - If it was me, send a "permission denied" reply
-        #  - If it wasn't me, send an "OK" reply
-        elif resource.state == 'requested':
-            if resource.req_timestamp < msg['timestamp']:
-                reply = make_reply('PERMISSION DENIED',
-                                   my_id, resource_name, clock)
-            elif resource.req_timestamp == msg['timestamp']:
-                if my_id > msg['id']:
-                    reply = make_reply('PERMISSION DENIED',
-                                       my_id, resource_name, clock)
-                else:
-                    reply = make_reply('OK', my_id, resource_name, clock)
-            else:
-                reply = make_reply('OK', my_id, resource_name, clock)
-        # If I don't want to access the resource, send an "OK" reply
-        else:
-            reply = make_reply('OK', my_id, resource_name, clock)
-            # print('\n', reply, '\n')
-
+    if msg_type == 'ACK':
+        last_message_ACK = True
+    elif msg_type == 'OK':
+        election_responses.append(msg['id'])
+    elif msg_type == 'ELECTION':
+        reply = make_reply('OK', f'OK {my_id}')
+        send_reply(reply, msg['reply_port'])
+        
+        election_thread = threading.Thread(target=election)
+        election_thread.start()
+    else:
+        reply = make_reply('ACK', f'ACK {my_id}')
         send_reply(reply, msg['reply_port'])
 
-        # If I've send a "permission denied" reply, put the sender process in next_queue
-        if reply['content']['msg_type'] == 'PERMISSION DENIED':
-            resource.next_queue.append(msg['reply_port'])
 
-    elif msg['content']['msg_type'] == 'OK':
-        resource.n_ok += 1
-
-        # If I've got everyone's "OK", access resource
-        if resource.n_ok == NPROCESS-1:
-            access_resource(resource, my_id)
-
-
-def proccess_message(message, resource_list, my_id):
+def proccess_message(message, my_id):
     global clock
+    print('CHEGOU UM BAGUI')
 
-    # ** Descomentar para testar desempate por timestamp
-    time.sleep(2)
+    # ** Descomentar para testar
+    #time.sleep(2)
 
     # Update Lamport's clock only if the incoming message isn't mine
     if message['id'] != my_id:
@@ -120,13 +97,13 @@ def proccess_message(message, resource_list, my_id):
         else:
             clock += 1
 
-    hand_message(message, resource_list, my_id)
+    handle_message(message, resource_list, my_id)
 
     # Add message to the queue with 0 ACK received
     print(f'\nReceived message: {message}')
 
 
-def receiver(resource_list, my_id, port):
+def receiver(my_id, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(('', port))
 
@@ -136,7 +113,7 @@ def receiver(resource_list, my_id, port):
         message = json.loads(data)
 
         t = threading.Thread(target=proccess_message,
-                             args=(message, resource_list, my_id))
+                             args=(message, my_id))
         t.start()
 
 
@@ -158,11 +135,10 @@ def send_reply(message, port):
 
 def sender(message, port):
     # Create UDP socket
-    global port_idx
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Send message
-    message['reply_port'] = PORT_LIST[port_idx]
+    message['reply_port'] = my_port
     data = json.dumps(message)
     print(f'Sending {message}...\n\n')
     s.sendto(data.encode('utf-8'), ('127.0.0.1', port))
@@ -173,42 +149,70 @@ def sender(message, port):
 
 
 def election():
-    pass
+    message = {
+        'id': my_id,
+        'timestamp': clock,
+        'content': f'ELECTION {my_id}',
+        'type': 'ELECTION'
+    }
+
+    # Send election message to all process with higher ID 
+    if my_id < NPROCESS-1:
+        for i in range(my_id + 1, NPROCESS):
+            sender(message, i)
+
+        time.sleep(TIME_LIMIT)
+
+    # If no one replies OK for election message or
+    # this process has the highest ID
+    # make this process leader
+    if len(election_responses) == 0:
+        announcement_msg = {
+            'id': my_id,
+            'timestamp': clock,
+            'content': f'LEADER ANNOUNCEMENT {my_id}',
+            'type': 'LEADER_ANNOUNCEMENT'
+        }
+
+        current_leader = my_id
+
+        for i in range(NPROCESS):
+            if i != my_id:
+                sender(announcement_msg, i)
+
+    election_responses.clear()
 
 
 if __name__ == "__main__":
 
-    id = sys.argv[2]
-
-    print(f"Starting proccess: {id}")
+    print(f"Starting proccess: {my_id}")
 
     # Cria thead responśvel por receber as mensagens
-    t = threading.Thread(target=receiver, args=(id, PORT_LIST[id]))
+    t = threading.Thread(target=receiver, args=(my_id, my_port))
     t.start()
 
     # Main thread
     while(True):
-        # Create request message
-        msg = {
-            'resource_name': resource_name,
-            'msg_type': 'ELECTION'
-        }
-
-        print("")
-        print(f'Pedindo permissão para utilizar o recurso {resource_name}')
+        dest = int(input())
+        msg = random.choice(MSGS)
         print("")
 
         message = {
-            'id': id,
+            'id': my_id,
             'timestamp': clock,
             'content': msg,
-            'reply_port': 0
+            'type': 'NORMAL'
         }
 
-        my_port = PORT_LIST[port_idx]
+        # Send message and wait for ACK
+        last_message_ACK = False
+        sender(message, dest)
+        time.sleep(TIME_LIMIT)
 
-        for i in PORT_LIST:
-            if my_port != i:
-                sender(message, i)
+        # If leader doesn't respond ACK,
+        # start new election
+        if last_message_ACK == False and dest == current_leader:
+            election_thread = threading.Thread(target=election)
+            election_thread.start() 
 
         print("")
