@@ -78,9 +78,6 @@ def handle_message(msg, my_id):
 def proccess_message(message, my_id):
     global clock
 
-    # ** Descomentar para testar
-    #time.sleep(2)
-
     # Update Lamport's clock only if the incoming message isn't mine
     if message['id'] != my_id:
         msg_timestamp = message['timestamp']
