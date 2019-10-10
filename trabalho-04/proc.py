@@ -17,44 +17,56 @@ import json
 import os
 
 
-neibor = {1: [2, 3, 4],
-          2: [1, 3],
-          3: [5, 1, 2],
-          4: [1, 5],
-          5: [4, 3],
-          6: [],
-          7: [],
-          8: [],
-          9: [],
-          10: []
-          }
+# neibor = {0: [1, 2, 3],
+#           1: [0, 2],
+#           2: [0, 1, 4],
+#           3: [0, 4],
+#           4: [2, 3],
+#           5: [],
+#           6: [],
+#           7: [],
+#           8: [],
+#           9: []
+#           }
+
+neibor = {
+    0: [1, 9],
+    1: [0, 2, 6],
+    2: [1, 3],
+    3: [2, 4, 5],
+    4: [3, 5, 6],
+    5: [3, 4, 8],
+    6: [1, 4, 7, 9],
+    7: [6, 8],
+    8: [7, 5],
+    9: [0, 6]
+}
 
 
 NPROCESS = 10
-PORT_LIST = [30001, 30002, 30003, 30004, 30006, 30007, 30008, 30009, 30010]
+PORT_LIST = [i for i in range(30000, 30010)]
 TIME_LIMIT = 3  # in seconds
 MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
         'Arthur', 'Bernardo', 'Davi', 'Gabriel', 'Heitor', 'Lucca', 'Lorenzo', 'Miguel', 'Matheus', 'Pedro']
 
-# Lamport's clock
-clock = 1
 
-my_port = int(sys.argv[1])
-my_id = int(sys.argv[2])
-my_cap = int(sys.arv[3])
+my_id = int(sys.argv[1])
+my_cap = int(sys.argv[2])
 election_responses = []
 current_leader = 0
 last_message_ACK = False
 started_election = False
 received_election = False
-father = 0
+father = -1
+response_list = []
 
 
-def make_reply(msg_type, content):
+def make_reply(msg_type, capacity, cap_owner):
+
     msg = {
         'id': my_id,
-        'timestamp': clock,
-        'content': content,
+        'capacity': capacity,
+        'cap_owner': cap_owner,
         'type': msg_type
     }
 
@@ -62,56 +74,65 @@ def make_reply(msg_type, content):
 
 
 def handle_message(msg, my_id):
-    global clock
     global last_message_ACK
     global current_leader
     global started_election
     global father
 
+    print(f'\nReceived message: {msg}')
+
     msg_type = msg['type']
     print(f'------- TIPO DA MENSAGEM :{msg_type}')
 
-    if msg_type == 'ACK':
-        last_message_ACK = True
-    elif msg_type == 'OK':
-        election_responses.append(msg['id'])
-    elif msg_type == 'ELECTION':
-        reply = make_reply('OK', f'OK {my_id}')
-        send_reply(reply, msg['reply_port'])
-
-        election_thread = threading.Thread(target=election)
-        election_thread.start()
-    elif msg_type == 'LEADER_ANNOUNCEMENT':
-        started_election = False
-        current_leader = msg['id']
-        print(f'---- The new leader is {current_leader} -----\n')
-    elif msg_type == 'STARTED ELECTION':
-        if father != 0:
+    if msg_type == 'ELECTION STARTED':
+        if father == -1:
             father = msg['id']
-            start_election(my_id, clock)
-    else:
-        msg_id = msg['id']
-        msg_timestamp = msg['timestamp']
-
-        reply = make_reply('ACK', f'ACK {msg_id} {msg_timestamp}')
-        send_reply(reply, msg['reply_port'])
-
-
-def proccess_message(message, my_id):
-    global clock
-
-    # Update Lamport's clock only if the incoming message isn't mine
-    if message['id'] != my_id:
-        msg_timestamp = message['timestamp']
-        if msg_timestamp > clock:
-            clock = msg_timestamp + 1
+            start_election(my_id)
         else:
-            clock += 1
+            reply = make_reply('RESPONSE', my_cap, my_id)
+            send_reply(reply, PORT_LIST[msg['id']])
+    elif msg_type == 'RESPONSE':
+        response_list.append(msg)
 
-    handle_message(message, my_id)
+        print(len(response_list), len(neibor[my_id]))
+        
+        max_cap = my_cap
+        cap_owner = my_id
+        # pega a maior capacidade
+        for i in response_list:
+            if i['capacity'] > max_cap:
+                max_cap = i['capacity']
+                cap_owner = i['cap_owner']
 
-    # Add message to the queue with 0 ACK received
-    print(f'\nReceived message: {message}')
+        if started_election == False:
+            if len(response_list) == len(neibor[my_id]) - 1:
+                # responde o pai
+                reply = make_reply('RESPONSE', max_cap, cap_owner)
+                send_reply(reply, PORT_LIST[father])
+
+        else:
+            if len(response_list) == len(neibor[my_id]):
+                announce_leader(cap_owner)
+
+    elif msg_type == 'LEADER ANNOUNCEMENT':
+        current_leader = msg['leader_id']
+
+
+
+def announce_leader(leader_id):
+    global current_leader
+
+    current_leader = leader_id
+
+    for i in range(NPROCESS):
+        if i != my_id:
+            msg = {
+                'id': my_id,
+                'leader_id': leader_id,
+                'type': 'LEADER ANNOUNCEMENT'
+            }
+
+            sender(msg, PORT_LIST[i])
 
 
 def receiver(my_id, port):
@@ -123,9 +144,10 @@ def receiver(my_id, port):
         data = data.decode('utf-8')
         message = json.loads(data)
 
-        t = threading.Thread(target=proccess_message,
+        t = threading.Thread(target=handle_message,
                              args=(message, my_id))
         t.start()
+
 
 
 def send_reply(message, port):
@@ -139,9 +161,6 @@ def send_reply(message, port):
     except OSError:
         pass
 
-    # Update clock
-    global clock
-    clock += 1
 
 
 def sender(message, port):
@@ -150,20 +169,15 @@ def sender(message, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Send message
-    message['reply_port'] = my_port
+    message['reply_port'] = PORT_LIST[my_id]
     data = json.dumps(message)
     print(f'Sending {message} to {port}...\n\n')
     s.sendto(data.encode('utf-8'), ('127.0.0.1', port))
 
-    # Update clock
-    global clock
-    clock += 1
 
-
-def start_election(my_id, clock):
+def start_election(my_id):
     message = {
         'id': my_id,
-        'timestamp': clock,
         'type': 'ELECTION STARTED',
         'timestamp': time.time()
     }
@@ -177,7 +191,7 @@ if __name__ == "__main__":
     print(f"Starting proccess: {my_id}")
 
     # Cria thead responśvel por receber as mensagens
-    t = threading.Thread(target=receiver, args=(my_id, my_port))
+    t = threading.Thread(target=receiver, args=(my_id, PORT_LIST[my_id]))
     t.start()
 
     # Main thread
@@ -186,6 +200,10 @@ if __name__ == "__main__":
         # Starting election
         if cmd == 'start':
             started_election = True
-            start_election(my_id, clock)
+            start_election(my_id)
+        if cmd == 'leader':
+            print('')
+            print(f' O lider atual é {current_leader}') 
+            print('')
 
         print("")
