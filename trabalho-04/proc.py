@@ -17,7 +17,7 @@ import json
 import os
 
 
-# neibor = {0: [1, 2, 3],
+# neighbor = {0: [1, 2, 3],
 #           1: [0, 2],
 #           2: [0, 1, 4],
 #           3: [0, 4],
@@ -29,7 +29,7 @@ import os
 #           9: []
 #           }
 
-neibor = {
+neighbor = {
     0: [1, 9],
     1: [0, 2, 6],
     2: [1, 3],
@@ -45,24 +45,20 @@ neibor = {
 
 NPROCESS = 10
 PORT_LIST = [i for i in range(30000, 30010)]
-TIME_LIMIT = 3  # in seconds
-MSGS = ['Alice', 'Helena', 'Isabela', 'Laura', 'Luiza', 'Manuela', 'Sofia', 'Valentina',
-        'Arthur', 'Bernardo', 'Davi', 'Gabriel', 'Heitor', 'Lucca', 'Lorenzo', 'Miguel', 'Matheus', 'Pedro']
+
 
 
 my_id = int(sys.argv[1])
 my_cap = int(sys.argv[2])
-election_responses = []
 current_leader = 0
-last_message_ACK = False
 started_election = False
-received_election = False
 father = -1
 response_list = []
+child_list = []
+election_id = -1
 
 
 def make_reply(msg_type, capacity, cap_owner):
-
     msg = {
         'id': my_id,
         'capacity': capacity,
@@ -74,10 +70,10 @@ def make_reply(msg_type, capacity, cap_owner):
 
 
 def handle_message(msg, my_id):
-    global last_message_ACK
     global current_leader
     global started_election
     global father
+    global election_id
 
     print(f'\nReceived message: {msg}')
 
@@ -85,16 +81,36 @@ def handle_message(msg, my_id):
     print(f'------- TIPO DA MENSAGEM :{msg_type}')
 
     if msg_type == 'ELECTION STARTED':
+        
+        # se nao tem eleicao acontecendo
+        if election_id == -1:
+            election_id = msg['election_id']
+        # se tem eleicao acontecendo, pega a com maior id
+        # id da eleicao eh o timestamp
+        else:
+            if msg['election_id'] > election_id:
+                election_id = msg['election_id']
+
+        # envia mensagem ao pai, para que o pai possa adicioná-lo
+        # a sua lista de filhos
         if father == -1:
             father = msg['id']
-            start_election(my_id)
+
+            child_msg = {
+                'id': my_id,
+                'type': 'CHILD ANNOUNCEMENT'
+            }
+
+            sender(child_msg, PORT_LIST[father])
+
+            start_election(my_id, election_id)
         else:
             reply = make_reply('RESPONSE', my_cap, my_id)
             send_reply(reply, PORT_LIST[msg['id']])
     elif msg_type == 'RESPONSE':
         response_list.append(msg)
 
-        print(len(response_list), len(neibor[my_id]))
+        print(len(response_list), len(neighbor[my_id]))
         
         max_cap = my_cap
         cap_owner = my_id
@@ -105,27 +121,30 @@ def handle_message(msg, my_id):
                 cap_owner = i['cap_owner']
 
         if started_election == False:
-            if len(response_list) == len(neibor[my_id]) - 1:
+            if len(response_list) == len(neighbor[my_id]) - 1:
                 # responde o pai
                 reply = make_reply('RESPONSE', max_cap, cap_owner)
                 send_reply(reply, PORT_LIST[father])
 
+        # mensagem de resposta chegou na fonte
         else:
-            if len(response_list) == len(neibor[my_id]):
+            if len(response_list) == len(neighbor[my_id]):
+                current_leader = cap_owner
                 announce_leader(cap_owner)
 
     elif msg_type == 'LEADER ANNOUNCEMENT':
         current_leader = msg['leader_id']
 
+        # repassa mensagem de novo lider para os filhos
+        announce_leader(current_leader)
+    
+    elif msg_type == 'CHILD ANNOUNCEMENT':
+        child_list.append(msg['id'])
 
 
+# envia mensagem de novo lider para todos os filhos
 def announce_leader(leader_id):
-    global current_leader
-
-    current_leader = leader_id
-
-    for i in range(NPROCESS):
-        if i != my_id:
+    for i in child_list:
             msg = {
                 'id': my_id,
                 'leader_id': leader_id,
@@ -175,14 +194,14 @@ def sender(message, port):
     s.sendto(data.encode('utf-8'), ('127.0.0.1', port))
 
 
-def start_election(my_id):
+def start_election(my_id, election_id):
     message = {
         'id': my_id,
         'type': 'ELECTION STARTED',
-        'timestamp': time.time()
+        'election_id': election_id
     }
 
-    for each in neibor[my_id]:
+    for each in neighbor[my_id]:
         if each != father:
             sender(message, PORT_LIST[each])
 
@@ -200,7 +219,8 @@ if __name__ == "__main__":
         # Starting election
         if cmd == 'start':
             started_election = True
-            start_election(my_id)
+            election_id = time.time()
+            start_election(my_id, election_id)
         if cmd == 'leader':
             print('')
             print(f' O lider atual é {current_leader}') 
