@@ -16,19 +16,6 @@ import random
 import json
 import os
 
-
-# neighbor = {0: [1, 2, 3],
-#           1: [0, 2],
-#           2: [0, 1, 4],
-#           3: [0, 4],
-#           4: [2, 3],
-#           5: [],
-#           6: [],
-#           7: [],
-#           8: [],
-#           9: []
-#           }
-
 neighbor = {
     0: [1, 9],
     1: [0, 2, 6],
@@ -42,30 +29,28 @@ neighbor = {
     9: [0, 6]
 }
 
-
 NPROCESS = 10
 PORT_LIST = [i for i in range(30000, 30010)]
-
-
 
 my_id = int(sys.argv[1])
 my_cap = int(sys.argv[2])
 current_leader = 0
 started_election = False
-father = -1
+parent = -1
 response_list = []
 child_list = []
 election_id = -1
 
+
 def reset_structures():
     global response_list
     global child_list
-    global father
+    global parent
     global start_election
 
     response_list = []
     child_list = []
-    father = -1
+    parent = -1
     start_election = False
 
 
@@ -83,7 +68,7 @@ def make_reply(msg_type, capacity, cap_owner):
 def handle_message(msg, my_id):
     global current_leader
     global started_election
-    global father
+    global parent
     global election_id
 
     print(f'\nReceived message: {msg}')
@@ -106,15 +91,15 @@ def handle_message(msg, my_id):
 
         # envia mensagem ao pai, para que o pai possa adicioná-lo
         # a sua lista de filhos
-        if father == -1:
-            father = msg['id']
+        if parent == -1:
+            parent = msg['id']
 
             child_msg = {
                 'id': my_id,
                 'type': 'CHILD ANNOUNCEMENT'
             }
 
-            sender(child_msg, PORT_LIST[father])
+            sender(child_msg, PORT_LIST[parent])
 
             start_election(my_id, election_id)
         else:
@@ -137,7 +122,7 @@ def handle_message(msg, my_id):
             if len(response_list) == len(neighbor[my_id]) - 1:
                 # responde o pai
                 reply = make_reply('RESPONSE', max_cap, cap_owner)
-                send_reply(reply, PORT_LIST[father])
+                send_reply(reply, PORT_LIST[parent])
 
         # mensagem de resposta chegou na fonte
         else:
@@ -218,7 +203,7 @@ def start_election(my_id, election_id):
     }
 
     for each in neighbor[my_id]:
-        if each != father:
+        if each != parent:
             sender(message, PORT_LIST[each])
 
 
