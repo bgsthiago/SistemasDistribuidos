@@ -31,6 +31,7 @@ election_responses = []
 current_leader = 0
 last_message_ACK = False
 started_election = False
+active = False
 
 
 def make_reply(msg_type, content):
@@ -185,32 +186,42 @@ def election():
 if __name__ == "__main__":
     print(f"Starting proccess: {my_id}")
 
-    # Cria thead responśvel por receber as mensagens
-    t = threading.Thread(target=receiver, args=(my_id, my_port))
-    t.start()
-
     # Main thread
     while(True):
-        dest = int(input())
-        msg = random.choice(MSGS)
-        print("")
+        op = input()
 
-        message = {
-            'id': my_id,
-            'timestamp': clock,
-            'content': msg,
-            'type': 'NORMAL'
-        }
+        if op == '+':
+            # Cria thead responśvel por receber as mensagens
+            if active == False:
+                active = True
+                t = threading.Thread(target=receiver, args=(my_id, my_port))
+                t.start()
+                election()
+        elif op == '-':
+            if active == True:
+                t.stop()
+                active = False
+        else:
+            dest = int(op)
+            msg = random.choice(MSGS)
+            print("")
 
-        # Send message and wait for ACK
-        last_message_ACK = False
-        sender(message, PORT_LIST[dest])
-        time.sleep(TIME_LIMIT)
+            message = {
+                'id': my_id,
+                'timestamp': clock,
+                'content': msg,
+                'type': 'NORMAL'
+            }
 
-        # If leader doesn't respond ACK,
-        # start new election
-        if last_message_ACK == False and dest == current_leader:
-            election_thread = threading.Thread(target=election)
-            election_thread.start() 
+            # Send message and wait for ACK
+            last_message_ACK = False
+            sender(message, PORT_LIST[dest])
+            time.sleep(TIME_LIMIT)
 
-        print("")
+            # If leader doesn't respond ACK,
+            # start new election
+            if last_message_ACK == False and dest == current_leader:
+                election_thread = threading.Thread(target=election)
+                election_thread.start() 
+
+            print("")

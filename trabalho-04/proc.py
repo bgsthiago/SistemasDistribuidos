@@ -57,6 +57,17 @@ response_list = []
 child_list = []
 election_id = -1
 
+def reset_structures():
+    global response_list
+    global child_list
+    global father
+    global start_election
+
+    response_list = []
+    child_list = []
+    father = -1
+    start_election = False
+
 
 def make_reply(msg_type, capacity, cap_owner):
     msg = {
@@ -86,10 +97,12 @@ def handle_message(msg, my_id):
         if election_id == -1:
             election_id = msg['election_id']
         # se tem eleicao acontecendo, pega a com maior id
-        # id da eleicao eh o timestamp
-        else:
-            if msg['election_id'] > election_id:
-                election_id = msg['election_id']
+        elif msg['election_id'] != election_id:
+                if msg['election_id'] > election_id:
+                    election_id = msg['election_id']
+                    reset_structures()
+                else:
+                    return
 
         # envia mensagem ao pai, para que o pai possa adicioná-lo
         # a sua lista de filhos
@@ -137,6 +150,9 @@ def handle_message(msg, my_id):
 
         # repassa mensagem de novo lider para os filhos
         announce_leader(current_leader)
+
+        reset_structures()
+        election_id = -1
     
     elif msg_type == 'CHILD ANNOUNCEMENT':
         child_list.append(msg['id'])
