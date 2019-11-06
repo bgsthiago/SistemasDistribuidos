@@ -1,0 +1,13 @@
+Client: send file
+Server: receive and store file
+
+Interface:
+    - constructor()
+        - params: directory which files will be saved
+        - responsability:
+            create a FileManager with specified directory
+
+    - uploadFile()
+        - params: File
+        - responsability:
+            store file on server directory
