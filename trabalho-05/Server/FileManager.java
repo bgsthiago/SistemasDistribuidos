@@ -33,6 +33,8 @@ public class FileManager implements FileManagerInterface {
             e.printStackTrace();
         }
 
+        System.out.println("Stored " + filename);
+
         return true;
     }
 }

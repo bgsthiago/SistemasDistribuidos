@@ -26,10 +26,10 @@ public class Client {
             // get file name from user
             Scanner userIn = new Scanner(System.in);
             System.out.println("Insert the file name:");
-            String fileName = userIn.nextLine();
+            String filename = userIn.nextLine();
 
             // upload file
-            File f = new File(fileName);
+            File f = new File(filename);
 
             // check if file exists
             if (!f.exists()) {
@@ -43,7 +43,7 @@ public class Client {
             FileInputStream in = new FileInputStream(f);
             in.read(data, 0, fileSize);
 
-            Boolean result = stub.uploadFile(data, f.getName(), fileSize);
+            Boolean result = stub.uploadFile(data, filename, fileSize);
             
             if (result) {
                 System.out.println("File transferred successfully!");
