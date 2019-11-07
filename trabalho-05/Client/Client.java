@@ -17,17 +17,22 @@ public class Client {
     private Client() {}
 
     public static void main(String args[]) {
-        String host = (args.length < 1) ? null : args[0]; ;
+        String host = (args.length < 2) ? null : args[0]; ;
         final int bufferSize = 8192;
 
         try {
             Registry registry = LocateRegistry.getRegistry(host);
             FileManagerInterface stub = (FileManagerInterface) registry.lookup("FileManager");
+            String filename;
 
             // get file name from user
-            Scanner userIn = new Scanner(System.in);
-            System.out.println("Insert the file name:");
-            String filename = userIn.nextLine();
+            if (args.length < 1) {
+                Scanner userIn = new Scanner(System.in);
+                System.out.println("Insert the file name:");
+                filename = userIn.nextLine();
+            } else {
+                filename = args[0];
+            }
 
             // upload file
             File f = new File(filename);

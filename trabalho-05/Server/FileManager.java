@@ -16,7 +16,7 @@ public class FileManager implements FileManagerInterface {
         this.dirPath = dirPath;
     }
 
-    public Boolean uploadFile(byte[] buffer, String filename, int bytesRead, int fileSize) {
+    public void uploadFile(byte[] buffer, String filename, int bytesRead, int fileSize) {
         Path filePath = this.dirPath.resolve(filename);
         File file = new File(filePath.toString());
         FileOutputStream out;
@@ -48,7 +48,5 @@ public class FileManager implements FileManagerInterface {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        return true;
     }
 }
