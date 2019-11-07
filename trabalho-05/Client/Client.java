@@ -17,7 +17,7 @@ public class Client {
     private Client() {}
 
     public static void main(String args[]) {
-        String host = (args.length < 2) ? null : args[0]; ;
+        String host = (args.length < 2) ? null : args[1]; ;
         final int bufferSize = 8192;
 
         try {
