@@ -9,11 +9,6 @@ public class Server {
     public Server() {}
 
     public static void main(String args[]) {
-        System.setProperty("java.security.policy","file:./test.policy");
-
-        if (System.getSecurityManager() == null) {
-            System.setSecurityManager(new SecurityManager());
-        }
 
         try {
             Path curDirectory = Paths.get(System.getProperty("user.dir"));
