@@ -19,7 +19,7 @@ public class Client {
     public static void main(String args[]) {
         String host = (args.length < 2) ? null : args[1]; ;
         final int bufferSize = 8192;
-
+        
         try {
             Registry registry = LocateRegistry.getRegistry(host);
             FileManagerInterface stub = (FileManagerInterface) registry.lookup("FileManager");
