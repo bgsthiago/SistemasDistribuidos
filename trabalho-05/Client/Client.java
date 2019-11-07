@@ -18,6 +18,7 @@ public class Client {
 
     public static void main(String args[]) {
         String host = (args.length < 1) ? null : args[0]; ;
+        final int bufferSize = 8192;
 
         try {
             Registry registry = LocateRegistry.getRegistry(host);
@@ -38,18 +39,17 @@ public class Client {
             }
 
             int fileSize = (int) f.length();
-            byte[] data = new byte[fileSize];
+            byte[] buffer = new byte[bufferSize];
 
             FileInputStream in = new FileInputStream(f);
-            in.read(data, 0, fileSize);
-
-            Boolean result = stub.uploadFile(data, filename, fileSize);
             
-            if (result) {
-                System.out.println("File transferred successfully!");
-            } else {
-                System.out.println("File already exists on server");
+            int count;
+            while ((count = in.read(buffer)) > 0 ){
+                stub.uploadFile(buffer, filename, count, fileSize);
             }
+
+            System.out.println("File transferred successfully!");
+            in.close();
         } catch (Exception e) {
             e.printStackTrace();
         }

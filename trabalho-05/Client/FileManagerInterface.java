@@ -4,5 +4,5 @@ import java.io.File;
 import java.io.IOException;
 
 public interface FileManagerInterface extends Remote {
-    Boolean uploadFile(byte[] stream, String filename, int size) throws RemoteException;
+    Boolean uploadFile(byte[] buffer, String filename, int bytesRead, int fileSize) throws RemoteException;
 }
