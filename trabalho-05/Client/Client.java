@@ -16,8 +16,17 @@ import java.util.Scanner;
 public class Client {
     private Client() {}
 
+    // args: <filename> <host>
     public static void main(String args[]) {
-        String host = (args.length < 2) ? null : args[1]; ;
+        String host;
+
+        if (args.length >= 2) {
+            host = args[1];
+            System.setProperty("java.rmi.server.hostname", host);
+        } else {
+            host = null;
+        }
+
         final int bufferSize = 8192;
         
         try {
