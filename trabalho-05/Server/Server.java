@@ -9,6 +9,8 @@ public class Server {
     public Server() {}
 
     public static void main(String args[]) {
+        System.setProperty("java.rmi.server.hostname", "192.168.0.107");
+        
 
         try {
             Path curDirectory = Paths.get(System.getProperty("user.dir"));
